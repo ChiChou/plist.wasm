@@ -1,0 +1,24 @@
+# Build output
+build/
+dist/
+
+# Emscripten SDK
+emsdk/
+
+# Node.js
+node_modules/
+package-lock.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor/IDE
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Logs
+*.log
