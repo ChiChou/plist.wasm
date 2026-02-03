@@ -25,37 +25,48 @@ npm run build
 ## Usage
 
 ```javascript
-import { init, toXml, toBinary, toJson, toOpenStep, detectFormat, Format } from 'plist.wasm';
+import { init, parse, version, Format } from 'plist.wasm';
 
-// Initialize the WASM module (required before any operations)
+// Initialize WASM module (call once before parsing)
 await init();
 
-// Convert XML plist to JSON
-const json = toJson(xmlPlistString);
+// Parse plist data (string or Uint8Array)
+const plist = parse(xmlPlistString);
 
-// Convert any plist format to binary
-const binary = toBinary(plistData);
+// Check detected format
+console.log(plist.format);     // Format.XML, Format.BINARY, Format.JSON, or Format.OPENSTEP
+console.log(plist.formatName); // "xml", "binary", "json", or "openstep"
 
-// Convert binary plist to XML
-const xml = toXml(binaryData);
+// Convert to different formats
+const json = plist.toJSON();
+const binary = plist.toBinary();
+const xml = plist.toXML();
+const openstep = plist.toOpenStep();
 
-// Convert to OpenStep format
-const openstep = toOpenStep(plistData);
+// Free memory when done
+plist.free();
 
-// Detect input format
-const format = detectFormat(plistData);
-// Returns: Format.XML, Format.BINARY, Format.JSON, or Format.OPENSTEP
+// Get libplist version
+console.log(version());
 ```
 
 ## API
 
-- `init()` - Initialize the WASM module (must be called first)
-- `toXml(data)` - Convert plist to XML format
-- `toBinary(data)` - Convert plist to binary format
-- `toJson(data, prettify?)` - Convert plist to JSON format
-- `toOpenStep(data, prettify?)` - Convert plist to OpenStep format
-- `detectFormat(data)` - Detect input plist format
-- `version()` - Get libplist version
+### Module Functions
+
+- `init()` - Initialize the WASM module (async, call once before parsing)
+- `parse(data)` - Parse plist data, returns a `Plist` instance
+- `version()` - Get libplist version string
+
+### Plist
+
+- `plist.format` - Detected format constant (Format.XML, Format.BINARY, etc.)
+- `plist.formatName` - Detected format as string ("xml", "binary", etc.)
+- `plist.toXML()` - Convert to XML format
+- `plist.toBinary()` - Convert to binary format
+- `plist.toJSON(prettify?)` - Convert to JSON format
+- `plist.toOpenStep(prettify?)` - Convert to OpenStep format
+- `plist.free()` - Free memory (call when done with this instance, unfortunately necessary due to WASM)
 
 Input `data` can be a `string` or `Uint8Array`.
 

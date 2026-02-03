@@ -3,264 +3,187 @@
  * Supports parsing and converting plists between XML, JSON, OpenStep, and binary formats
  */
 
-import createPlistModule from './plist_wasm.mjs';
+import createPlistModule from "./plist_wasm.mjs";
 
-let wasmModule = null;
-let wasmReady = false;
-
-const Format = {
-    NONE: 0,
-    XML: 1,
-    BINARY: 2,
-    JSON: 3,
-    OPENSTEP: 4,
+export const Format = {
+  NONE: 0,
+  XML: 1,
+  BINARY: 2,
+  JSON: 3,
+  OPENSTEP: 4,
 };
 
-const ErrorCode = {
-    SUCCESS: 0,
-    INVALID_ARG: -1,
-    FORMAT: -2,
-    PARSE: -3,
-    NO_MEM: -4,
-    IO: -5,
-    CIRCULAR_REF: -6,
-    MAX_NESTING: -7,
-    UNKNOWN: -255,
+export const ErrorCode = {
+  SUCCESS: 0,
+  INVALID_ARG: -1,
+  FORMAT: -2,
+  PARSE: -3,
+  NO_MEM: -4,
+  IO: -5,
+  CIRCULAR_REF: -6,
+  MAX_NESTING: -7,
+  UNKNOWN: -255,
 };
 
 const ErrorMessages = {
-    [ErrorCode.SUCCESS]: 'Success',
-    [ErrorCode.INVALID_ARG]: 'Invalid argument',
-    [ErrorCode.FORMAT]: 'Format error - nodes not compatible with output format',
-    [ErrorCode.PARSE]: 'Parse error',
-    [ErrorCode.NO_MEM]: 'Out of memory',
-    [ErrorCode.IO]: 'I/O error',
-    [ErrorCode.CIRCULAR_REF]: 'Circular reference detected',
-    [ErrorCode.MAX_NESTING]: 'Maximum nesting depth exceeded',
-    [ErrorCode.UNKNOWN]: 'Unknown error',
+  [ErrorCode.SUCCESS]: "Success",
+  [ErrorCode.INVALID_ARG]: "Invalid argument",
+  [ErrorCode.FORMAT]: "Format error - nodes not compatible with output format",
+  [ErrorCode.PARSE]: "Parse error",
+  [ErrorCode.NO_MEM]: "Out of memory",
+  [ErrorCode.IO]: "I/O error",
+  [ErrorCode.CIRCULAR_REF]: "Circular reference detected",
+  [ErrorCode.MAX_NESTING]: "Maximum nesting depth exceeded",
+  [ErrorCode.UNKNOWN]: "Unknown error",
 };
 
-class PlistError extends Error {
-    constructor(code) {
-        super(ErrorMessages[code] || `Unknown error code: ${code}`);
-        this.name = 'PlistError';
-        this.code = code;
-    }
+export class PlistError extends Error {
+  constructor(code) {
+    super(ErrorMessages[code] || `Unknown error code: ${code}`);
+    this.name = "PlistError";
+    this.code = code;
+  }
 }
 
-/**
- * Initialize the WASM module
- * @returns {Promise<void>}
- */
-async function init() {
-    if (wasmReady) return;
-    wasmModule = await createPlistModule();
-    wasmReady = true;
-}
+export class Plist {
+  constructor(wasm, handle, format) {
+    this._wasm = wasm;
+    this._handle = handle;
+    this._format = format;
+  }
 
-/**
- * Ensure module is initialized
- */
-function ensureReady() {
-    if (!wasmReady) {
-        throw new Error('WASM module not initialized. Call init() first.');
+  get format() {
+    return this._format;
+  }
+
+  get formatName() {
+    switch (this._format) {
+      case Format.XML:
+        return "xml";
+      case Format.BINARY:
+        return "binary";
+      case Format.JSON:
+        return "json";
+      case Format.OPENSTEP:
+        return "openstep";
+      default:
+        return "unknown";
     }
-}
+  }
 
-/**
- * Convert input to buffer pointer
- * @param {string | Uint8Array} data
- * @returns {{ptr: number, length: number}}
- */
-function toBuffer(data) {
-    let bytes;
-    if (typeof data === 'string') {
-        bytes = new TextEncoder().encode(data);
-    } else if (data instanceof Uint8Array) {
-        bytes = data;
-    } else {
-        throw new TypeError('Input must be a string or Uint8Array');
-    }
-
-    const ptr = wasmModule._alloc_buffer(bytes.length);
-    if (!ptr) {
-        throw new PlistError(ErrorCode.NO_MEM);
-    }
-
-    wasmModule.HEAPU8.set(bytes, ptr);
-    return { ptr, length: bytes.length };
-}
-
-/**
- * Get result string from WASM
- * @returns {string}
- */
-function getResultString() {
-    const error = wasmModule._get_error();
-    if (error !== 0) {
+  _withResult(fn) {
+    const res = this._wasm._result_alloc();
+    try {
+      fn(res);
+      const error = this._wasm._result_get_error(res);
+      if (error !== 0) {
         throw new PlistError(error);
+      }
+      const dataPtr = this._wasm._result_get_data(res);
+      const length = this._wasm._result_get_length(res);
+      return { dataPtr, length };
+    } finally {
+      this._wasm._result_free(res);
     }
+  }
 
-    const dataPtr = wasmModule._get_data();
-    const length = wasmModule._get_length();
+  toXML() {
+    const { dataPtr, length } = this._withResult((res) =>
+      this._wasm._plist_to_xml_wrapper(res, this._handle)
+    );
+    return new TextDecoder().decode(
+      new Uint8Array(this._wasm.HEAPU8.buffer, dataPtr, length)
+    );
+  }
 
-    if (!dataPtr || length === 0) {
-        return '';
-    }
-
-    const bytes = new Uint8Array(wasmModule.HEAPU8.buffer, dataPtr, length);
-    return new TextDecoder().decode(bytes);
-}
-
-/**
- * Get result binary from WASM
- * @returns {Uint8Array}
- */
-function getResultBinary() {
-    const error = wasmModule._get_error();
-    if (error !== 0) {
-        throw new PlistError(error);
-    }
-
-    const dataPtr = wasmModule._get_data();
-    const length = wasmModule._get_length();
-
-    if (!dataPtr || length === 0) {
-        return new Uint8Array(0);
-    }
-
-    // Copy the data to a new Uint8Array
+  toBinary() {
+    const { dataPtr, length } = this._withResult((res) =>
+      this._wasm._plist_to_bin_wrapper(res, this._handle)
+    );
     const result = new Uint8Array(length);
-    result.set(new Uint8Array(wasmModule.HEAPU8.buffer, dataPtr, length));
+    result.set(new Uint8Array(this._wasm.HEAPU8.buffer, dataPtr, length));
     return result;
-}
+  }
 
-/**
- * Convert plist to XML format
- * @param {string | Uint8Array} data - Input plist data (any supported format)
- * @returns {string} XML string
- */
-function toXml(data) {
-    ensureReady();
-    const { ptr, length } = toBffer(data);
+  toJSON(prettify = true) {
+    const { dataPtr, length } = this._withResult((res) =>
+      this._wasm._plist_to_json_wrapper(res, this._handle, prettify ? 1 : 0)
+    );
+    return new TextDecoder().decode(
+      new Uint8Array(this._wasm.HEAPU8.buffer, dataPtr, length)
+    );
+  }
 
-    try {
-        wasmModule._plist_to_xml_wrapper(ptr, length);
-        return getResultString();
-    } finally {
-        wasmModule._free_buffer(ptr);
+  toOpenStep(prettify = true) {
+    const { dataPtr, length } = this._withResult((res) =>
+      this._wasm._plist_to_openstep_wrapper(res, this._handle, prettify ? 1 : 0)
+    );
+    return new TextDecoder().decode(
+      new Uint8Array(this._wasm.HEAPU8.buffer, dataPtr, length)
+    );
+  }
+
+  free() {
+    if (this._handle) {
+      this._wasm._plist_free_handle(this._handle);
+      this._handle = null;
     }
+  }
 }
 
-/**
- * Convert plist to binary format
- * @param {string | Uint8Array} data - Input plist data (any supported format)
- * @returns {Uint8Array} Binary plist data
- */
-function toBinary(data) {
-    ensureReady();
-    const { ptr, length } = toBuffer(data);
+let wasmModule;
 
-    try {
-        wasmModule._plist_to_bin_wrapper(ptr, length);
-        return getResultBinary();
-    } finally {
-        wasmModule._free_buffer(ptr);
+export async function init() {
+  if (!wasmModule) {
+    wasmModule = await createPlistModule();
+  }
+}
+
+function toBuffer(data) {
+  let bytes;
+  if (typeof data === "string") {
+    bytes = new TextEncoder().encode(data);
+  } else if (data instanceof Uint8Array) {
+    bytes = data;
+  } else {
+    throw new TypeError("Input must be a string or Uint8Array");
+  }
+
+  const ptr = wasmModule._alloc_buffer(bytes.length);
+  if (!ptr) {
+    throw new PlistError(ErrorCode.NO_MEM);
+  }
+
+  wasmModule.HEAPU8.set(bytes, ptr);
+  return { ptr, length: bytes.length };
+}
+
+export function parse(data) {
+  if (!wasmModule) {
+    throw new Error("Module not initialized. Call init() first.");
+  }
+
+  const { ptr, length } = toBuffer(data);
+  const res = wasmModule._result_alloc();
+
+  try {
+    const handle = wasmModule._plist_parse(res, ptr, length);
+    const error = wasmModule._result_get_error(res);
+    if (error !== 0) {
+      throw new PlistError(error);
     }
+    const format = wasmModule._result_get_format(res);
+    return new Plist(wasmModule, handle, format);
+  } finally {
+    wasmModule._result_free(res);
+    wasmModule._free_buffer(ptr);
+  }
 }
 
-/**
- * Convert plist to JSON format
- * @param {string | Uint8Array} data - Input plist data (any supported format)
- * @param {boolean} [prettify=true] - Whether to prettify the output
- * @returns {string} JSON string
- */
-function toJson(data, prettify = true) {
-    ensureReady();
-    const { ptr, length } = toBuffer(data);
-
-    try {
-        wasmModule._plist_to_json_wrapper(ptr, length, prettify ? 1 : 0);
-        return getResultString();
-    } finally {
-        wasmModule._free_buffer(ptr);
-    }
+export function version() {
+  if (!wasmModule) {
+    throw new Error("Module not initialized. Call init() first.");
+  }
+  const ptr = wasmModule._get_version();
+  return wasmModule.UTF8ToString(ptr);
 }
-
-/**
- * Convert plist to OpenStep (NeXTSTEP) format
- * @param {string | Uint8Array} data - Input plist data (any supported format)
- * @param {boolean} [prettify=true] - Whether to prettify the output
- * @returns {string} OpenStep string
- */
-function toOpenStep(data, prettify = true) {
-    ensureReady();
-    const { ptr, length } = toBuffer(data);
-
-    try {
-        wasmModule._plist_to_openstep_wrapper(ptr, length, prettify ? 1 : 0);
-        return getResultString();
-    } finally {
-        wasmModule._free_buffer(ptr);
-    }
-}
-
-/**
- * Detect the format of plist data
- * @param {string | Uint8Array} data - Input plist data
- * @returns {number} Format constant (see Format enum)
- */
-function detectFormat(data) {
-    ensureReady();
-    const { ptr, length } = toBuffer(data);
-
-    try {
-        wasmModule._plist_detect_format(ptr, length);
-        const error = wasmModule._get_error();
-        if (error !== 0) {
-            throw new PlistError(error);
-        }
-        return wasmModule._get_format();
-    } finally {
-        wasmModule._free_buffer(ptr);
-    }
-}
-
-/**
- * Get the format name from format constant
- * @param {number} format - Format constant
- * @returns {string} Format name
- */
-function formatName(format) {
-    switch (format) {
-        case Format.XML: return 'xml';
-        case Format.BINARY: return 'binary';
-        case Format.JSON: return 'json';
-        case Format.OPENSTEP: return 'openstep';
-        default: return 'unknown';
-    }
-}
-
-/**
- * Get libplist version
- * @returns {string}
- */
-function version() {
-    ensureReady();
-    const ptr = wasmModule._get_version();
-    return wasmModule.UTF8ToString(ptr);
-}
-
-export {
-    init,
-    toXml,
-    toBinary,
-    toJson,
-    toOpenStep,
-    detectFormat,
-    formatName,
-    version,
-    Format,
-    ErrorCode,
-    PlistError,
-};

@@ -77,7 +77,7 @@ emcc -O3 \
     -s MODULARIZE=1 \
     -s EXPORT_ES6=1 \
     -s EXPORT_NAME="createPlistModule" \
-    -s EXPORTED_FUNCTIONS='["_alloc_buffer","_free_buffer","_get_error","_get_data","_get_length","_get_format","_plist_to_xml_wrapper","_plist_to_bin_wrapper","_plist_to_json_wrapper","_plist_to_openstep_wrapper","_plist_detect_format","_get_version","_malloc","_free"]' \
+    -s EXPORTED_FUNCTIONS='["_result_alloc","_result_free","_result_get_error","_result_get_data","_result_get_length","_result_get_format","_alloc_buffer","_free_buffer","_plist_parse","_plist_free_handle","_plist_to_xml_wrapper","_plist_to_bin_wrapper","_plist_to_json_wrapper","_plist_to_openstep_wrapper","_get_version","_malloc","_free"]' \
     -s EXPORTED_RUNTIME_METHODS='["UTF8ToString","stringToUTF8","HEAPU8"]' \
     -s ALLOW_MEMORY_GROWTH=1 \
     -s INITIAL_MEMORY=16777216 \
