@@ -1,0 +1,6 @@
+{
+    "Name": "Test",
+    "Count": 42,
+    "Enabled": true,
+    "Items": ["one", "two", "three"]
+}

@@ -1,115 +1,168 @@
-import { init, parse, version } from "../dist/plist.mjs";
+import { describe, it, before } from "node:test";
+import assert from "node:assert";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
-const xmlPlist = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Name</key>
-    <string>Test</string>
-    <key>Count</key>
-    <integer>42</integer>
-    <key>Enabled</key>
-    <true/>
-    <key>Items</key>
-    <array>
-        <string>one</string>
-        <string>two</string>
-        <string>three</string>
-    </array>
-</dict>
-</plist>`;
+import {
+  init,
+  parse,
+  version,
+  Format,
+  toXML,
+  toBinary,
+  toJSON,
+  toOpenStep,
+} from "../dist/plist.mjs";
 
-const xmlPlistOpenStepCompat = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Name</key>
-    <string>Test</string>
-    <key>Count</key>
-    <integer>42</integer>
-    <key>Items</key>
-    <array>
-        <string>one</string>
-        <string>two</string>
-        <string>three</string>
-    </array>
-</dict>
-</plist>`;
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const corpusDir = join(__dirname, "corpus");
 
-const jsonPlist = `{
-    "Name": "Test",
-    "Count": 42,
-    "Enabled": true,
-    "Items": ["one", "two", "three"]
-}`;
+const readCorpus = (name) => readFileSync(join(corpusDir, name), "utf-8");
 
-const openStepPlist = `{
-    Name = Test;
-    Count = 42;
-    Items = (one, two, three);
-}`;
+describe("plist.wasm", () => {
+  before(async () => {
+    await init();
+  });
 
-async function test() {
-  console.log("Creating parser instance...");
-  await init();
+  it("should report libplist version", () => {
+    const ver = version();
+    assert.ok(typeof ver === "string");
+    assert.ok(ver.length > 0);
+  });
 
-  console.log("libplist version:", version());
-  console.log("");
+  describe("XML plist", () => {
+    it("should parse XML and detect format", () => {
+      const xmlPlist = readCorpus("sample.xml");
+      const plist = parse(xmlPlist);
+      assert.strictEqual(plist.format, Format.XML);
+      plist.free();
+    });
 
-  console.log("=== Test XML input ===");
-  const xmlParsed = parse(xmlPlist);
-  console.log("Input format:", xmlParsed.formatName);
+    it("should convert XML to JSON", () => {
+      const xmlPlist = readCorpus("sample.xml");
+      const plist = parse(xmlPlist);
+      const json = plist.toJSON();
+      const obj = JSON.parse(json);
+      assert.strictEqual(obj.Name, "Test");
+      assert.strictEqual(obj.Count, 42);
+      assert.strictEqual(obj.Enabled, true);
+      assert.deepStrictEqual(obj.Items, ["one", "two", "three"]);
+      plist.free();
+    });
 
-  console.log("\nConverting to JSON:");
-  console.log(xmlParsed.toJSON());
+    it("should convert XML to binary", () => {
+      const xmlPlist = readCorpus("sample.xml");
+      const plist = parse(xmlPlist);
+      const binary = plist.toBinary();
+      assert.ok(binary instanceof Uint8Array);
+      assert.ok(binary.length > 0);
+      const header = Array.from(binary.slice(0, 6))
+        .map((b) => String.fromCharCode(b))
+        .join("");
+      assert.strictEqual(header, "bplist");
+      plist.free();
+    });
 
-  console.log("\nConverting to Binary (hex):");
-  const binary = xmlParsed.toBinary();
-  console.log(binary);
-  console.log("Length:", binary.length, "bytes");
-  console.log(
-    "Header:",
-    Array.from(binary.slice(0, 8))
-      .map((b) => String.fromCharCode(b))
-      .join(""),
-  );
-  xmlParsed.free();
+    it("should convert XML to OpenStep (without booleans)", () => {
+      const xmlPlist = readCorpus("sample-openstep-compat.xml");
+      const plist = parse(xmlPlist);
+      const openstep = plist.toOpenStep();
+      assert.ok(typeof openstep === "string");
+      assert.ok(openstep.includes("Name"));
+      assert.ok(openstep.includes("Test"));
+      plist.free();
+    });
+  });
 
-  console.log(
-    "\nConverting to OpenStep (note: booleans not supported in OpenStep format):",
-  );
-  const xmlOpenStepParsed = parse(xmlPlistOpenStepCompat);
-  console.log(xmlOpenStepParsed.toOpenStep());
-  xmlOpenStepParsed.free();
+  describe("JSON plist", () => {
+    it("should parse JSON and detect format", () => {
+      const jsonPlist = readCorpus("sample.json");
+      const plist = parse(jsonPlist);
+      assert.strictEqual(plist.format, Format.JSON);
+      plist.free();
+    });
 
-  console.log("\n=== Test JSON input ===");
-  const jsonParsed = parse(jsonPlist);
-  console.log("Input format:", jsonParsed.formatName);
+    it("should convert JSON to XML", () => {
+      const jsonPlist = readCorpus("sample.json");
+      const plist = parse(jsonPlist);
+      const xml = plist.toXML();
+      assert.ok(xml.includes('<?xml version="1.0"'));
+      assert.ok(xml.includes("<plist"));
+      assert.ok(xml.includes("<key>Name</key>"));
+      assert.ok(xml.includes("<string>Test</string>"));
+      plist.free();
+    });
+  });
 
-  console.log("\nConverting to XML:");
-  console.log(jsonParsed.toXML());
-  jsonParsed.free();
+  describe("OpenStep plist", () => {
+    it("should parse OpenStep and detect format", () => {
+      const openStepPlist = readCorpus("sample.openstep");
+      const plist = parse(openStepPlist);
+      assert.strictEqual(plist.format, Format.OPENSTEP);
+      plist.free();
+    });
 
-  console.log("\n=== Test OpenStep input ===");
-  const openStepParsed = parse(openStepPlist);
-  console.log("Input format:", openStepParsed.formatName);
+    it("should convert OpenStep to JSON", () => {
+      const openStepPlist = readCorpus("sample.openstep");
+      const plist = parse(openStepPlist);
+      const json = plist.toJSON();
+      const obj = JSON.parse(json);
+      assert.strictEqual(obj.Name, "Test");
+      assert.strictEqual(obj.Count, "42");
+      assert.deepStrictEqual(obj.Items, ["one", "two", "three"]);
+      plist.free();
+    });
+  });
 
-  console.log("\nConverting to JSON:");
-  console.log(openStepParsed.toJSON());
-  openStepParsed.free();
+  describe("Binary plist", () => {
+    it("should parse binary and convert back to XML", () => {
+      const xmlPlist = readCorpus("sample.xml");
+      const plist = parse(xmlPlist);
+      const binary = plist.toBinary();
+      plist.free();
 
-  console.log("\n=== Test Binary input ===");
-  const binaryParsed = parse(binary);
-  console.log("Input format:", binaryParsed.formatName);
+      const binaryPlist = parse(binary);
+      assert.strictEqual(binaryPlist.format, Format.BINARY);
 
-  console.log("\nConverting binary back to XML:");
-  console.log(binaryParsed.toXML());
-  binaryParsed.free();
+      const xml = binaryPlist.toXML();
+      assert.ok(xml.includes('<?xml version="1.0"'));
+      assert.ok(xml.includes("<key>Name</key>"));
+      binaryPlist.free();
+    });
+  });
 
-  console.log("\n=== All tests passed! ===");
-}
+  describe("Convenience functions", () => {
+    it("toJSON should convert XML to JSON", () => {
+      const xmlPlist = readCorpus("sample.xml");
+      const json = toJSON(xmlPlist);
+      const obj = JSON.parse(json);
+      assert.strictEqual(obj.Name, "Test");
+      assert.strictEqual(obj.Count, 42);
+    });
 
-test().catch((err) => {
-  console.error("Test failed:", err);
-  process.exit(1);
+    it("toBinary should convert XML to binary", () => {
+      const xmlPlist = readCorpus("sample.xml");
+      const binary = toBinary(xmlPlist);
+      assert.ok(binary instanceof Uint8Array);
+      const header = Array.from(binary.slice(0, 6))
+        .map((b) => String.fromCharCode(b))
+        .join("");
+      assert.strictEqual(header, "bplist");
+    });
+
+    it("toXML should convert JSON to XML", () => {
+      const jsonPlist = readCorpus("sample.json");
+      const xml = toXML(jsonPlist);
+      assert.ok(xml.includes('<?xml version="1.0"'));
+      assert.ok(xml.includes("<key>Name</key>"));
+    });
+
+    it("toOpenStep should convert XML to OpenStep", () => {
+      const xmlPlist = readCorpus("sample-openstep-compat.xml");
+      const openstep = toOpenStep(xmlPlist);
+      assert.ok(openstep.includes("Name"));
+      assert.ok(openstep.includes("Test"));
+    });
+  });
 });

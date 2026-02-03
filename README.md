@@ -25,12 +25,18 @@ npm run build
 ## Usage
 
 ```javascript
-import { init, parse, version, Format } from 'plist.wasm';
+import { init, parse, toJSON, toBinary, toXML, toOpenStep, version, Format } from 'plist.wasm';
 
 // Initialize WASM module (call once before parsing)
 await init();
 
-// Parse plist data (string or Uint8Array)
+// Quick conversion (recommended for one-off conversions)
+const json = toJSON(xmlPlistString);
+const binary = toBinary(xmlPlistString);
+const xml = toXML(binaryPlistData);
+const openstep = toOpenStep(jsonPlistString);
+
+// Or use the Plist class for multiple conversions from the same source
 const plist = parse(xmlPlistString);
 
 // Check detected format
@@ -38,10 +44,8 @@ console.log(plist.format);     // Format.XML, Format.BINARY, Format.JSON, or For
 console.log(plist.formatName); // "xml", "binary", "json", or "openstep"
 
 // Convert to different formats
-const json = plist.toJSON();
-const binary = plist.toBinary();
-const xml = plist.toXML();
-const openstep = plist.toOpenStep();
+const json2 = plist.toJSON();
+const binary2 = plist.toBinary();
 
 // Free memory when done
 plist.free();
@@ -57,6 +61,15 @@ console.log(version());
 - `init()` - Initialize the WASM module (async, call once before parsing)
 - `parse(data)` - Parse plist data, returns a `Plist` instance
 - `version()` - Get libplist version string
+
+### Convenience Functions
+
+One-step conversion functions that handle parsing and cleanup automatically:
+
+- `toXML(data)` - Convert any plist format to XML
+- `toBinary(data)` - Convert any plist format to binary
+- `toJSON(data, prettify?)` - Convert any plist format to JSON
+- `toOpenStep(data, prettify?)` - Convert any plist format to OpenStep
 
 ### Plist
 
