@@ -1,0 +1,2 @@
+# Force include dist directory (overrides gitignore)
+!dist/

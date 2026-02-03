@@ -1,21 +1,24 @@
 {
   "name": "plist.wasm",
-  "private": true,
   "version": "1.0.0",
   "description": "WebAssembly wrapper for libplist - parse and convert Apple Property Lists",
   "type": "module",
   "main": "dist/plist.mjs",
+  "module": "dist/plist.mjs",
   "exports": {
     ".": {
-      "import": "./dist/plist.mjs"
+      "import": "./dist/plist.mjs",
+      "default": "./dist/plist.mjs"
     }
   },
   "files": [
-    "dist/"
+    "dist/*.mjs",
+    "dist/*.wasm"
   ],
   "scripts": {
     "build": "bash build.sh",
-    "test": "node test/test.mjs"
+    "test": "node test/test.mjs",
+    "prepare": "./build.sh"
   },
   "keywords": [
     "plist",
@@ -24,11 +27,19 @@
     "xml",
     "binary",
     "wasm",
-    "webassembly"
+    "webassembly",
+    "libplist"
   ],
   "license": "LGPL-2.1",
   "repository": {
     "type": "git",
-    "url": "https://github.com/chichou/plist.wasm.git"
+    "url": "git+https://github.com/ChiChou/plist.wasm.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ChiChou/plist.wasm/issues"
+  },
+  "homepage": "https://github.com/ChiChou/plist.wasm#readme",
+  "engines": {
+    "node": ">=22.0.0"
   }
 }
