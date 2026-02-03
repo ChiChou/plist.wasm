@@ -1,6 +1,6 @@
 {
   "name": "plist.wasm",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "WebAssembly wrapper for libplist - parse and convert Apple Property Lists",
   "type": "module",
   "main": "dist/plist.mjs",
@@ -16,7 +16,6 @@
     "dist/*.wasm"
   ],
   "scripts": {
-    "build": "bash build.sh",
     "test": "node test/test.mjs",
     "prepare": "./build.sh"
   },
